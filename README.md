@@ -1,83 +1,131 @@
 # Browser Control MCP
 
-[![Firefox Add-on](./.github/addon_badge.svg)](https://addons.mozilla.org/en-US/firefox/addon/browser-control-mcp/)
+[![CI](https://github.com/LunarKittyy/browser-control-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LunarKittyy/browser-control-mcp/actions/workflows/ci.yml)
 
-An MCP server paired with a Firefox browser extension that provides AI assistants with access to tab management, browsing history, and webpage text content.
+An MCP server paired with a Firefox extension that lets an AI agent cowork in your browser while you use it: it can keep an eye on what you have open, sort and group your research, archive it into bookmarks, follow up on leads in background tabs, and interact with the sites you allow. What it may touch is decided by an access policy you write, and a pause switch stops it instantly.
+
+This is a fork of [eyalzh/browser-control-mcp](https://github.com/eyalzh/browser-control-mcp). Version 2 changes the protocol between the server and the extension, so both need to come from this repository and be the same version.
 
 ## Features
 
-The MCP server supports the following tools:
-- Open or close tabs
-- Get the list of opened tabs
-- Create tab groups with name and color
-- Reorder opened tabs
-- Read and search the browser's history
-- Read a webpage's text content and links (requires user consent)
-- Find and highlight text in a browser tab (requires user consent)
-- Capture a screenshot of a tab's visible area (requires user consent per tab)
+**Tabs and windows**: list tabs by window and group (with duplicates and "opened by agent" marked), open tabs in the background, close, navigate/back/forward/reload, pin, mute, unload, move between windows, reorder.
 
-## Example use-cases:
+**Tab groups**: create, add to, rename, recolour, collapse, move, ungroup and dissolve groups, or apply a whole arrangement in one `organize-tabs` call.
 
-### Tab management
-- *"Close all non-work-related tabs in my browser."*
-- *"Group all development related tabs in my browser into a new group called 'Development'."*
-- *"Rearrange tabs in my browser in an order that makes sense."*
-- *"Close all tabs in my browser that haven't been accessed within the past 24 hours"*
+**Activity feed**: `get-browser-activity` returns what happened since the agent's last check (tabs opened, closed, navigated, focused, grouped, group changes), marked as done by you or by the agent. Made for periodic check-ins.
 
-### Browser history search
-- *"Help me find an article in my browser history about the Milford track in NZ."*
-- *"Open all the articles about AI that I visited during the last week, up to 10 articles, avoid duplications."*
+**Pages**: read the main content or the full page with metadata (author, publish date, canonical URL) and links, read what you have selected, find & highlight, screenshots.
 
-### Browsing and research 
-- *"Open hackernews in my browser, then open the top story, read it, also read the comments. Do the comments agree with the story?"*
-- *"In my browser, use Google Scholar to search for papers about L-theanine in the last 3 years. Open the 3 most cited papers. Read them and summarize them for me."*
-- *"Use Google search in my browser to look for flower shops. Open the 10 most relevant results. Show me a table of each flower shop with location and opening hours."*
+**Page interaction**: list a page's controls, click, fill in fields and selects, scroll, press keys. Password fields are never read or filled.
 
-## Comparison to web automation MCP servers
+**Bookmarks**: search, list, create, edit, remove, and `bookmark-tab-group` to archive a finished group into a folder.
 
-The MCP server and Firefox extension combo is designed to be more secure than web automation MCP servers, enabling safer use with the user's personal browser.
+**History**: search with a time window.
 
-* It does not support web page modification, page interactions, or arbitrary scripting.
-* Reading webpage content requires the user's explicit consent in the browser for each domain. This is enforced at the extension's manifest level.
-* Screenshots require the user to authorize each individual tab by clicking the extension's toolbar button. The extension relies on the `activeTab` permission for this, so the authorization is enforced by Firefox itself and expires when the tab navigates or closes. The extension never requests broad host permissions for screenshots.
-* It uses a local-only connection with a shared secret between the MCP server and extension.
-* No remote data collection or tracking.
-* It provides an extension-side audit log for tool calls and tool enable/disable configuration.
-* The extension includes no runtime third-party dependencies.
+**Agent workspace**: tabs the agent opens go into a background "Agent" tab group (or a separate window) so they don't pull you away from what you're doing.
 
-**Important note**: Browser Control MCP is still experimental. Use at your own risk. You should practice caution as with any other MCP server and authorize/monitor tool calls carefully.
+**Toolbar popup**: connection status, a pause switch (also `Alt+Shift+P`), approvals for pending requests, recent activity.
+
+## Access policy
+
+The extension's settings page holds a small policy language. One rule per line:
+
+```
+<allow | ask | deny | hide> <what> on <where>
+```
+
+Rules are read top to bottom and **later rules override earlier ones**, so general rules go first and exceptions after. `hide` is the exception: a matching `hide` rule always wins and makes the target invisible to the agent. Hidden tabs don't show up in tab lists, history, the activity feed or group listings, and asking for one by ID gets the same answer as a tab that doesn't exist. Anything no rule allows is denied.
+
+```
+# Read and organise freely, ask before screenshots or touching pages
+allow see, manage, navigate, read, selection on *
+ask   screenshot, interact on *
+
+# Let it shop on IKEA on its own
+allow interact, screenshot on site:ikea.com
+
+# Things it should never even know about
+hide on site:swedbank.se
+hide on group:"Private*"
+hide on container:"Banking"
+hide on private
+
+# Bookmarks: read everything, write only in its own folder
+allow bookmarks.read on *
+allow bookmarks.write on folder:"Agent/**"
+```
+
+| What | Allows the agent to |
+| --- | --- |
+| `see` | see the tab/site in tab lists, history and the activity feed |
+| `read` | read page text, links and metadata, find & highlight |
+| `selection` | read what you have selected |
+| `screenshot` | capture screenshots |
+| `manage` | close, move, group, pin, mute and unload tabs |
+| `navigate` | open or load URLs |
+| `interact` | click, type and scroll in pages |
+| `bookmarks.read`, `bookmarks.write` | read / change bookmarks (`bookmarks` means both) |
+| `all` | everything |
+
+| Where | Matches |
+| --- | --- |
+| `*` | everything |
+| `site:ikea.com` | ikea.com and its subdomains (`site:*.ikea.com`: subdomains only) |
+| `url:https://github.com/me/*` | full URLs, `*` matches anything |
+| `group:"Research*"` | tabs in tab groups whose title matches |
+| `container:"Banking"` | tabs in a Firefox container |
+| `private` | private windows |
+| `agent` | tabs the agent opened |
+| `folder:"Agent/**"` | bookmark folders. `*` stays within one folder, `**` spans any depth. Paths start at `toolbar`, `menu`, `other` or `mobile`; a leading `/` anchors the pattern there, otherwise it matches from any folder down |
+
+Put `!` in front of a selector to negate it, and list several selectors on one line when all of them must match (`allow interact on site:github.com group:"Research*"`).
+
+`ask` works for `read`, `selection`, `screenshot` and `interact`. The agent gets told to wait, the toolbar button shows `!` on that tab, and the popup offers **Allow once** (until the tab navigates), **Always on this site** (adds an `allow` rule for you) or **Deny**.
+
+The settings page has presets (Strict, Balanced, Autonomous), live error checking, and a "Try it" box that shows what the agent could do with a given URL, group, container or bookmark folder. The agent can call `get-browser-status` to read the policy in plain words, so it doesn't have to find the limits by trial and error.
+
+The policy sits on top of Firefox's own permissions: the extension still needs access to a site before it can script it. Grant "Access to all sites" in the settings to let the policy alone decide, or approve sites as they come up. Opening the toolbar popup on a tab also gives access to that tab until it navigates.
+
+## Example use-cases
+
+- *"Every half hour, look at what I've opened since your last check, group it by topic, and close duplicates."*
+- *"The tabs in my 'GPU research' group: read them, find the three most promising leads, and open follow-up sources in the background."*
+- *"Archive the 'Trip planning' group into bookmarks and close it."*
+- *"What does the paragraph I just highlighted mean, and is the claim backed up anywhere else?"*
+- *"Find a white KALLAX shelf on IKEA and put it in the cart."* (with `interact` allowed on ikea.com)
+
+## Security model
+
+- The server only listens on loopback, and every message in both directions is signed with a shared secret. A connection only counts once it has sent a correctly signed hello, so another local program can't take over the socket.
+- The access policy is enforced in the extension, not the server, so a misbehaving agent or server can't bypass it.
+- Hidden targets are indistinguishable from nonexistent ones.
+- Password fields are never read or typed into, and card-number fields are never read.
+- The pause switch rejects every command except the status check.
+- The extension keeps an audit log of every command with its outcome, and has no runtime third-party dependencies.
+- Page content is untrusted: the server's instructions tell the agent not to follow instructions found in pages. Allowing `interact` on a site still means the agent can do on that site whatever you could, so keep it to sites where that's fine.
+
+**Note**: this is experimental software. Watch what the agent does, especially with `interact` allowed.
 
 ## Installation
 
-### Option 1: Install the Firefox and Claude Desktop extensions
+Version 2 is not on addons.mozilla.org; the add-on there is the upstream 1.x version, which can't talk to this server.
 
-The Firefox extension / add-on is [available on addons.mozilla.org](https://addons.mozilla.org/en-US/firefox/addon/browser-control-mcp/). You can also download and open the latest pre-built version from this GitHub repository: [browser-control-mcp-1.5.0.xpi](https://github.com/eyalzh/browser-control-mcp/releases/download/v1.5.0/browser-control-1.5.0.xpi). Complete the installation based on the instructions in the "Manage extension" page, which will open automatically after installation.
+### Build from code
 
-The add-on's "Manage extension" page will include a link to the Claude Desktop DXT file. You can also download it here: [mcp-server-v1.5.2.dxt](
-https://github.com/eyalzh/browser-control-mcp/releases/download/v1.5.2/mcp-server-v1.5.2.dxt). After downloading the file, open it or drag it into Claude Desktop's settings window. Make sure to enable the DXT extension after installing it. This will only work with the latest versions of Claude Desktop. If you wish to install the MCP server locally, see the MCP configuration below.
-
-### Option 2: Build from code
-
-To build from code, clone this repository, then run the following commands in the main repository directory to build both the MCP server and the browser extension.
 ```
 npm install
 npm run build
 ```
 
-#### Installing a Firefox Temporary Add-on 
+Each CI run also uploads the packaged extension (`.zip`, rename to `.xpi` if you like) and the Claude Desktop `.dxt` as build artifacts.
 
-To install the extension on Firefox as a Temporary Add-on:
+#### Load the extension in Firefox (139 or later)
 
-1. Type `about:debugging` in the Firefox URL bar
-2. Click on "This Firefox"
-3. click on "Load Temporary Add-on..."
-4. Select the `manifest.json` file under the `firefox-extension` folder in this project
-5. The extension's preferences page will open. Copy the secret key to your clipboard. It will be used to configure the MCP server.
+1. Open `about:debugging`, click "This Firefox", then "Load Temporary Add-on..."
+2. Pick `firefox-extension/manifest.json`
+3. The settings page opens. Copy the secret key for the MCP server configuration below.
 
-Alternatively, to install a permanent add-on, you can install the [Browser Control MCP on addons.mozilla.org](https://addons.mozilla.org/en-US/firefox/addon/browser-control-mcp/) and then configure the MCP Server as detailed below.
-
-If you prefer not to run the extension on your personal Firefox browser, an alternative is to download a separate Firefox instance (such as Firefox Developer Edition, available at https://www.mozilla.org/en-US/firefox/developer/).
-
+Temporary add-ons are removed when Firefox restarts. To keep it installed, sign it as an unlisted add-on with `web-ext sign` (needs a free addons.mozilla.org API key), or use Firefox Developer Edition/Nightly with `xpinstall.signatures.required` set to `false` and install the `.xpi`.
 
 #### MCP Server configuration
 
@@ -132,3 +180,16 @@ and use the following mcpServers configuration:
 }
 ```
 
+
+## Development
+
+```
+npm install          # installs all three packages
+npm run typecheck
+npm test             # MCP server and extension test suites
+npm run build
+npm run lint --prefix firefox-extension      # web-ext lint
+npm run package --prefix firefox-extension   # build the add-on package
+```
+
+CI runs all of the above on every push and pull request, plus a check that every version number in the repo agrees.
