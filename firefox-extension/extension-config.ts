@@ -1,324 +1,292 @@
 /**
  * Configuration management for Browser Control MCP extension
  */
-
-import { ServerMessageRequest } from "@browser-control-mcp/common/server-messages";
+import type { CommandName, GroupColor } from "@browser-control-mcp/common";
+import { DEFAULT_POLICY } from "./acl/policy";
 
 const DEFAULT_WS_PORT = 8089;
-const AUDIT_LOG_SIZE_LIMIT = 100; // Maximum number of audit log entries to keep
+const AUDIT_LOG_SIZE_LIMIT = 200;
 
-// Define all available tools with their IDs and descriptions
-export interface ToolInfo {
+export interface ToolCategory {
   id: string;
   name: string;
   description: string;
 }
 
-export const AVAILABLE_TOOLS: ToolInfo[] = [
+// Coarse on/off switches per tool family. The access policy decides the fine-grained part.
+export const TOOL_CATEGORIES: ToolCategory[] = [
   {
-    id: "open-browser-tab",
-    name: "Open Browser Tab",
-    description: "Allows the MCP server to open new browser tabs"
+    id: "tabs",
+    name: "Tabs",
+    description: "List, open, close, move, pin, unload and navigate tabs",
   },
   {
-    id: "close-browser-tabs",
-    name: "Close Browser Tabs",
-    description: "Allows the MCP server to close browser tabs"
+    id: "groups",
+    name: "Tab groups",
+    description: "Create, rename, recolour, move, dissolve and organize tab groups",
   },
   {
-    id: "get-list-of-open-tabs",
-    name: "Get List of Open Tabs",
-    description: "Allows the MCP server to get a list of all open tabs"
+    id: "history",
+    name: "History",
+    description: "Search your browsing history",
   },
   {
-    id: "get-recent-browser-history",
-    name: "Get Recent Browser History",
-    description: "Allows the MCP server to access your recent browsing history"
+    id: "content",
+    name: "Page content",
+    description: "Read page text, links, metadata and your selection; find & highlight",
   },
   {
-    id: "get-tab-web-content",
-    name: "Get Tab Web Content",
-    description: "Allows the MCP server to read the content of web pages"
+    id: "screenshot",
+    name: "Screenshots",
+    description: "Capture the visible area of a tab",
   },
   {
-    id: "reorder-browser-tabs",
-    name: "Reorder/Group Browser Tabs",
-    description: "Allows the MCP server to reorder/group your browser tabs"
+    id: "interaction",
+    name: "Page interaction",
+    description: "Click, type, scroll and press keys inside pages",
   },
   {
-    id: "find-highlight-in-browser-tab",
-    name: "Find and Highlight in Browser Tab",
-    description: "Allows the MCP server to search for and highlight text in web pages"
+    id: "bookmarks",
+    name: "Bookmarks",
+    description: "Search, create, edit and remove bookmarks, archive tab groups",
   },
   {
-    id: "capture-tab-screenshot",
-    name: "Capture Tab Screenshot",
-    description: "Allows the MCP server to capture a screenshot of a tab, after you authorize that tab with the toolbar button"
-  }
+    id: "activity",
+    name: "Activity feed",
+    description: "See what changed in the browser since the agent last looked",
+  },
 ];
 
-// Map command names to tool IDs
-export const COMMAND_TO_TOOL_ID: Record<ServerMessageRequest["cmd"], string> = {
-  "open-tab": "open-browser-tab",
-  "close-tabs": "close-browser-tabs",
-  "get-tab-list": "get-list-of-open-tabs",
-  "get-browser-recent-history": "get-recent-browser-history",
-  "get-tab-content": "get-tab-web-content",
-  "reorder-tabs": "reorder-browser-tabs",
-  "find-highlight": "find-highlight-in-browser-tab",
-  "group-tabs": "reorder-browser-tabs",
-  "capture-screenshot": "capture-tab-screenshot",
+// null: always available (the status check has to work even when everything else is off)
+export const COMMAND_CATEGORY: Record<CommandName, string | null> = {
+  "get-status": null,
+  "get-tab-list": "tabs",
+  "open-tab": "tabs",
+  "close-tabs": "tabs",
+  "navigate-tab": "tabs",
+  "update-tabs": "tabs",
+  "move-tabs": "tabs",
+  "reorder-tabs": "tabs",
+  "list-groups": "groups",
+  "group-tabs": "groups",
+  "update-group": "groups",
+  "ungroup-tabs": "groups",
+  "move-group": "groups",
+  "close-group": "groups",
+  "organize-tabs": "groups",
+  "get-history": "history",
+  "get-tab-content": "content",
+  "get-selection": "content",
+  "find-highlight": "content",
+  "capture-screenshot": "screenshot",
+  "get-page-elements": "interaction",
+  "click-element": "interaction",
+  "fill-element": "interaction",
+  "scroll-page": "interaction",
+  "press-key": "interaction",
+  "search-bookmarks": "bookmarks",
+  "list-bookmark-folder": "bookmarks",
+  "create-bookmarks": "bookmarks",
+  "update-bookmark": "bookmarks",
+  "remove-bookmarks": "bookmarks",
+  "bookmark-tab-group": "bookmarks",
+  "get-activity": "activity",
 };
 
-// Storage schema for tool settings
-export interface ToolSettings {
-  [toolId: string]: boolean;
+export type AgentWorkspaceMode = "group" | "window" | "none";
+
+export interface AgentWorkspaceSettings {
+  mode: AgentWorkspaceMode;
+  groupTitle: string;
+  groupColor: GroupColor;
+  bookmarkFolder: string;
 }
 
-// Audit log entry interface
+export const DEFAULT_AGENT_WORKSPACE: AgentWorkspaceSettings = {
+  mode: "group",
+  groupTitle: "Agent",
+  groupColor: "purple",
+  bookmarkFolder: "other/Agent",
+};
+
+export interface ToolSettings {
+  [categoryId: string]: boolean;
+}
+
 export interface AuditLogEntry {
-  toolId: string;
   command: string;
   timestamp: number;
   url?: string;
+  result: "ok" | "denied" | "error";
+  detail?: string;
 }
 
-// Extended config interface
 export interface ExtensionConfig {
   secret: string;
-  toolSettings?: ToolSettings;
-  domainDenyList?: string[];
   ports: number[];
-  auditLog?: AuditLogEntry[];
+  toolSettings: ToolSettings;
+  policyText: string;
+  paused: boolean;
+  agentWorkspace: AgentWorkspaceSettings;
 }
 
-/**
- * Gets the default tool settings (all enabled)
- */
-export function getDefaultToolSettings(): ToolSettings {
-  const settings: ToolSettings = {};
-  AVAILABLE_TOOLS.forEach(tool => {
-    settings[tool.id] = true;
-  });
-  return settings;
+interface StoredConfig extends Partial<ExtensionConfig> {
+  // Pre-2.0 settings, migrated into the policy on first load
+  domainDenyList?: string[];
+  auditLog?: unknown;
 }
 
-/**
- * Gets the extension configuration from storage
- * @returns A Promise that resolves with the extension configuration
- */
+export function migrateDenyList(policyText: string, denyList: string[]): string {
+  const domains = denyList.map((domain) => domain.trim()).filter(Boolean);
+  if (domains.length === 0) {
+    return policyText;
+  }
+  return (
+    policyText.trimEnd() +
+    "\n\n# Migrated from the old domain deny list\n" +
+    domains
+      .map((domain) => `deny read, selection, screenshot, interact on site:${domain}`)
+      .join("\n") +
+    "\n"
+  );
+}
+
+// Pre-2.0 per-tool switches and the category that replaced them
+const LEGACY_TOOL_CATEGORY: Record<string, string> = {
+  "open-browser-tab": "tabs",
+  "close-browser-tabs": "tabs",
+  "get-list-of-open-tabs": "tabs",
+  "reorder-browser-tabs": "groups",
+  "get-recent-browser-history": "history",
+  "get-tab-web-content": "content",
+  "find-highlight-in-browser-tab": "content",
+  "capture-tab-screenshot": "screenshot",
+};
+
+function migrateToolSettings(settings: ToolSettings): ToolSettings {
+  const migrated: ToolSettings = {};
+  for (const [id, enabled] of Object.entries(settings)) {
+    const category = LEGACY_TOOL_CATEGORY[id] ?? id;
+    // A category stays off if any of the tools it replaces was switched off
+    migrated[category] = (migrated[category] ?? true) && enabled;
+  }
+  return migrated;
+}
+
+function normalize(stored: StoredConfig): ExtensionConfig {
+  let policyText = stored.policyText;
+  if (policyText === undefined) {
+    policyText = migrateDenyList(DEFAULT_POLICY, stored.domainDenyList ?? []);
+  }
+  return {
+    secret: stored.secret ?? "",
+    ports: stored.ports?.length ? stored.ports : [DEFAULT_WS_PORT],
+    toolSettings: migrateToolSettings(stored.toolSettings ?? {}),
+    policyText,
+    paused: stored.paused ?? false,
+    agentWorkspace: { ...DEFAULT_AGENT_WORKSPACE, ...stored.agentWorkspace },
+  };
+}
+
 export async function getConfig(): Promise<ExtensionConfig> {
-  const configObj = await browser.storage.local.get("config");
-  const config: ExtensionConfig = configObj.config || { secret: "" };
-  
-  // Initialize toolSettings if it doesn't exist
-  if (!config.toolSettings) {
-    config.toolSettings = getDefaultToolSettings();
-  }
-
-  if (!config.ports) {
-    config.ports = [DEFAULT_WS_PORT];
-  }
-  
-  return config;
+  const { config } = await browser.storage.local.get("config");
+  return normalize((config as StoredConfig) ?? {});
 }
 
-/**
- * Saves the extension configuration to storage
- * @param config The configuration to save
- * @returns A Promise that resolves when the configuration is saved
- */
-export async function saveConfig(config: ExtensionConfig): Promise<void> {
-  await browser.storage.local.set({ config });
+// Read-modify-write cycles on storage are not atomic, so every write goes through this chain
+// to keep concurrent commands (and the options page, within this context) from losing updates.
+let writeChain: Promise<unknown> = Promise.resolve();
+
+function serialized<T>(task: () => Promise<T>): Promise<T> {
+  const result = writeChain.then(task, task);
+  writeChain = result.catch(() => undefined);
+  return result;
 }
 
-/**
- * Gets the secret from storage
- * @returns A Promise that resolves with the secret
- */
+export function updateConfig(
+  update: (config: ExtensionConfig) => void | Promise<void>
+): Promise<ExtensionConfig> {
+  return serialized(async () => {
+    const config = await getConfig();
+    await update(config);
+    await browser.storage.local.set({ config });
+    return config;
+  });
+}
+
 export async function getSecret(): Promise<string> {
-  const config = await getConfig();
-  return config.secret;
+  return (await getConfig()).secret;
 }
 
-/**
- * Generates a new secret and saves it to storage
- * @returns A Promise that resolves with the new secret
- */
 export async function generateSecret(): Promise<string> {
-  const config = await getConfig();
-  config.secret = crypto.randomUUID();
-  await saveConfig(config);
+  const config = await updateConfig((config) => {
+    config.secret = crypto.randomUUID();
+  });
   return config.secret;
 }
 
-/**
- * Checks if a tool is enabled
- * @param toolId The ID of the tool to check
- * @returns A Promise that resolves with true if the tool is enabled, false otherwise
- */
-export async function isToolEnabled(toolId: string): Promise<boolean> {
-  const config = await getConfig();
-  // Default to true if not explicitly set to false
-  return config.toolSettings?.[toolId] !== false;
+export function isCategoryEnabled(config: ExtensionConfig, categoryId: string): boolean {
+  return config.toolSettings[categoryId] !== false;
 }
 
-/**
- * Checks if a command is allowed based on the tool permissions
- * @param command The command to check
- * @returns A Promise that resolves with true if the command is allowed, false otherwise
- */
-export async function isCommandAllowed(command: ServerMessageRequest["cmd"]): Promise<boolean> {
-  const toolId = COMMAND_TO_TOOL_ID[command];
-  if (!toolId) {
-    console.error(`Unknown command: ${command}`);
-    return false;
-  }
-  return isToolEnabled(toolId);
+export async function setToolEnabled(categoryId: string, enabled: boolean): Promise<void> {
+  await updateConfig((config) => {
+    config.toolSettings[categoryId] = enabled;
+  });
 }
 
-/**
- * Sets the enabled status of a tool
- * @param toolId The ID of the tool to update
- * @param enabled Whether the tool should be enabled
- * @returns A Promise that resolves when the setting is saved
- */
-export async function setToolEnabled(toolId: string, enabled: boolean): Promise<void> {
-  const config = await getConfig();
-  
-  // Update the setting
-  if (!config.toolSettings) {
-    config.toolSettings = getDefaultToolSettings();
-  }
-  config.toolSettings[toolId] = enabled;
-  
-  // Save back to storage
-  await saveConfig(config);
-}
-
-/**
- * Gets all tool settings
- * @returns A Promise that resolves with the current tool settings
- */
-export async function getAllToolSettings(): Promise<ToolSettings> {
-  const config = await getConfig();
-  return config.toolSettings || getDefaultToolSettings();
-}
-
-/**
- * Gets the domain deny list
- * @returns A Promise that resolves with the domain deny list
- */
-export async function getDomainDenyList(): Promise<string[]> {
-  const config = await getConfig();
-  return config.domainDenyList || [];
-}
-
-/**
- * Sets the domain deny list
- * @param domains Array of domains to deny
- * @returns A Promise that resolves when the setting is saved
- */
-export async function setDomainDenyList(domains: string[]): Promise<void> {
-  const config = await getConfig();
-  config.domainDenyList = domains;
-  await saveConfig(config);
-}
-
-/**
- * Checks if a domain is in the deny list
- * @param url The URL to check
- * @returns A Promise that resolves with true if the domain is in the deny list, false otherwise
- */
-export async function isDomainInDenyList(url: string): Promise<boolean> {
-  try {
-    // Extract the domain from the URL
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname;
-    
-    // Get the deny list
-    const denyList = await getDomainDenyList();
-    
-    // Check if the domain is in the deny list
-    return denyList.some(deniedDomain => 
-      domain.toLowerCase() === deniedDomain.toLowerCase() || 
-      domain.toLowerCase().endsWith(`.${deniedDomain.toLowerCase()}`)
-    );
-  } catch (error) {
-    console.error(`Error checking domain in deny list: ${error}`);
-    // If there's an error parsing the URL, return false
-    return false;
-  }
-}
-
-/**
- * Gets the WebSocket ports list
- * @returns A Promise that resolves with the ports list
- */
-export async function getPorts(): Promise<number[]> {
-  const config = await getConfig();
-  return config.ports || [DEFAULT_WS_PORT];
-}
-
-/**
- * Sets the WebSocket ports list
- * @param ports Array of port numbers
- * @returns A Promise that resolves when the setting is saved
- */
 export async function setPorts(ports: number[]): Promise<void> {
-  const config = await getConfig();
-  config.ports = ports;
-  await saveConfig(config);
+  await updateConfig((config) => {
+    config.ports = ports;
+  });
 }
 
-/**
- * Adds an entry to the audit log
- * @param entry The audit log entry to add
- * @returns A Promise that resolves when the entry is saved
- */
-export async function addAuditLogEntry(entry: AuditLogEntry): Promise<void> {
-  const config = await getConfig();
-  
-  if (!config.auditLog) {
-    config.auditLog = [];
-  }
-  
-  // Add the new entry at the beginning
-  config.auditLog.unshift(entry);
-  
-  // Keep only the last AUDIT_LOG_SIZE_LIMIT entries
-  if (config.auditLog.length > AUDIT_LOG_SIZE_LIMIT) {
-    config.auditLog = config.auditLog.slice(0, AUDIT_LOG_SIZE_LIMIT);
-  }
-  
-  await saveConfig(config);
+export async function setPolicyText(policyText: string): Promise<void> {
+  await updateConfig((config) => {
+    config.policyText = policyText;
+  });
 }
 
-/**
- * Gets the audit log entries
- * @returns A Promise that resolves with the audit log entries
- */
+export async function appendPolicyRule(rule: string, comment?: string): Promise<void> {
+  await updateConfig((config) => {
+    const lines = [config.policyText.trimEnd()];
+    if (comment) {
+      lines.push(`# ${comment}`);
+    }
+    lines.push(rule);
+    config.policyText = lines.join("\n") + "\n";
+  });
+}
+
+export async function setPaused(paused: boolean): Promise<void> {
+  await updateConfig((config) => {
+    config.paused = paused;
+  });
+}
+
+export async function setAgentWorkspace(settings: AgentWorkspaceSettings): Promise<void> {
+  await updateConfig((config) => {
+    config.agentWorkspace = settings;
+  });
+}
+
+// The audit log lives under its own key so that logging a command doesn't rewrite (and race
+// with) the configuration.
+export function addAuditLogEntry(entry: AuditLogEntry): Promise<void> {
+  return serialized(async () => {
+    const log = await getAuditLog();
+    log.unshift(entry);
+    await browser.storage.local.set({ auditLog: log.slice(0, AUDIT_LOG_SIZE_LIMIT) });
+  });
+}
+
 export async function getAuditLog(): Promise<AuditLogEntry[]> {
-  const config = await getConfig();
-  return config.auditLog || [];
+  const { auditLog } = await browser.storage.local.get("auditLog");
+  return Array.isArray(auditLog) ? (auditLog as AuditLogEntry[]) : [];
 }
 
-/**
- * Clears the audit log
- * @returns A Promise that resolves when the audit log is cleared
- */
-export async function clearAuditLog(): Promise<void> {
-  const config = await getConfig();
-  config.auditLog = [];
-  await saveConfig(config);
-}
-
-/**
- * Gets the tool name by tool ID
- * @param toolId The tool ID to look up
- * @returns The tool name or the tool ID if not found
- */
-export function getToolNameById(toolId: string): string {
-  const tool = AVAILABLE_TOOLS.find(t => t.id === toolId);
-  return tool ? tool.name : toolId;
+export function clearAuditLog(): Promise<void> {
+  return serialized(async () => {
+    await browser.storage.local.set({ auditLog: [] });
+  });
 }

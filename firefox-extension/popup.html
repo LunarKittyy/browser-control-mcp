@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Browser Control MCP</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    body { width: 320px; margin: 0; padding: 14px; font-size: 13px; }
+    h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+    .dot.on { background: var(--ok); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 10px 0; }
+    .card.warn { border-color: var(--accent); }
+    .buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    button { font: inherit; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 5px 10px; cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    button.pause { width: 100%; padding: 8px; font-weight: 600; }
+    button.pause.paused { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+    ul { list-style: none; padding: 0; margin: 4px 0 0; }
+    li { padding: 3px 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    li b { color: var(--text); font-weight: 500; }
+    .muted { color: var(--muted); }
+    a { color: var(--link); }
+  </style>
+</head>
+<body>
+  <h1><span class="dot" id="connection-dot"></span> Browser Control</h1>
+  <div class="muted" id="connection-text">Checking connection…</div>
+
+  <div class="card warn" id="approval-card" hidden>
+    <div><b>The agent is asking to</b> <span id="approval-caps"></span> <b>on this page.</b></div>
+    <div class="buttons">
+      <button class="primary" id="approve-once">Allow once</button>
+      <button id="approve-always">Always on this site</button>
+      <button id="reject">Deny</button>
+    </div>
+  </div>
+
+  <button class="pause" id="pause-button">Pause agent</button>
+  <div class="muted" style="margin-top:4px">Shortcut: Alt+Shift+P</div>
+
+  <div class="card">
+    <div class="row"><b>Recent activity</b></div>
+    <ul id="activity"><li>Nothing yet.</li></ul>
+  </div>
+
+  <div class="row">
+    <a href="#" id="open-options">Settings &amp; access policy</a>
+    <span class="muted" id="grant-note"></span>
+  </div>
+  <script src="dist/popup.js"></script>
+</body>
+</html>

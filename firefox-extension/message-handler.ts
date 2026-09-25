@@ -1,438 +1,120 @@
-import type { ServerMessageRequest } from "@browser-control-mcp/common";
-import { WebsocketClient } from "./client";
-import { isCommandAllowed, isDomainInDenyList, COMMAND_TO_TOOL_ID, addAuditLogEntry } from "./extension-config";
-import { hasCaptureConsent, markTabAsAwaitingConsent } from "./capture-consent";
+import type {
+  AnyRequestMessage,
+  CommandName,
+  ErrorCode,
+} from "@browser-control-mcp/common";
+import { Access } from "./access";
+import { Policy, parsePolicy } from "./acl/policy";
+import { CommandError, errorMessage } from "./errors";
+import {
+  COMMAND_CATEGORY,
+  ExtensionConfig,
+  addAuditLogEntry,
+  getConfig,
+  isCategoryEnabled,
+} from "./extension-config";
+import { bookmarkHandlers } from "./handlers/bookmarks";
+import { contentHandlers } from "./handlers/content";
+import { groupHandlers } from "./handlers/groups";
+import { statusHandlers } from "./handlers/status";
+import { tabHandlers } from "./handlers/tabs";
+import type { Handler, HandlerMap } from "./handlers/types";
+import { asAgentAction } from "./state/agent-tabs";
 
-// Time to let a newly foregrounded tab paint before capturing it
-const TAB_PAINT_DELAY_MS = 250;
+export const HANDLERS: HandlerMap = {
+  ...statusHandlers,
+  ...tabHandlers,
+  ...groupHandlers,
+  ...contentHandlers,
+  ...bookmarkHandlers,
+};
 
-export class MessageHandler {
-  private client: WebsocketClient;
+let cachedPolicy: { text: string; policy: Policy } | undefined;
 
-  constructor(client: WebsocketClient) {
-    this.client = client;
+export function policyFor(text: string): Policy {
+  if (cachedPolicy?.text !== text) {
+    cachedPolicy = { text, policy: parsePolicy(text) };
   }
-
-  public async handleDecodedMessage(req: ServerMessageRequest): Promise<void> {
-    const isAllowed = await isCommandAllowed(req.cmd);
-    if (!isAllowed) {
-      throw new Error(`Command '${req.cmd}' is disabled in extension settings`);
-    }
-
-    this.addAuditLogForReq(req).catch((error) => {
-      console.error("Failed to add audit log entry:", error);
-    });
-
-    switch (req.cmd) {
-      case "open-tab":
-        await this.openUrl(req.correlationId, req.url);
-        break;
-      case "close-tabs":
-        await this.closeTabs(req.correlationId, req.tabIds);
-        break;
-      case "get-tab-list":
-        await this.sendTabs(req.correlationId);
-        break;
-      case "get-browser-recent-history":
-        await this.sendRecentHistory(req.correlationId, req.searchQuery);
-        break;
-      case "get-tab-content":
-        await this.sendTabsContent(req.correlationId, req.tabId, req.offset);
-        break;
-      case "reorder-tabs":
-        await this.reorderTabs(req.correlationId, req.tabOrder);
-        break;
-      case "find-highlight":
-        await this.findAndHighlightText(
-          req.correlationId,
-          req.tabId,
-          req.queryPhrase
-        );
-        break;
-      case "group-tabs":
-        await this.groupTabs(
-          req.correlationId,
-          req.tabIds,
-          req.isCollapsed,
-          req.groupColor as browser.tabGroups.Color,
-          req.groupTitle
-        );
-        break;
-      case "capture-screenshot":
-        await this.captureScreenshot(
-          req.correlationId,
-          req.tabId,
-          req.format,
-          req.quality,
-          req.scale
-        );
-        break;
-      default:
-        const _exhaustiveCheck: never = req;
-        console.error("Invalid message received:", req);
-    }
-  }
-
-  private async addAuditLogForReq(req: ServerMessageRequest) {
-    // Get the URL in context (either from param or from the tab)
-    let contextUrl: string | undefined;
-    if ("url" in req && req.url) {
-      contextUrl = req.url;
-    }
-    if ("tabId" in req) {
-      try {
-        const tab = await browser.tabs.get(req.tabId);
-        contextUrl = tab.url;
-      } catch (error) {
-        console.error("Failed to get tab URL for audit log:", error);
-      }
-    }
-
-    const toolId = COMMAND_TO_TOOL_ID[req.cmd];
-    const auditEntry = {
-      toolId,
-      command: req.cmd,
-      timestamp: Date.now(),
-      url: contextUrl
-    };
-    
-    await addAuditLogEntry(auditEntry);
-  }
-
-  private async openUrl(correlationId: string, url: string): Promise<void> {
-    if (!url.startsWith("https://")) {
-      console.error("Invalid URL:", url);
-      throw new Error("Invalid URL");
-    }
-
-    if (await isDomainInDenyList(url)) {
-      throw new Error("Domain in user defined deny list");
-    }
-
-    const tab = await browser.tabs.create({
-      url,
-    });
-
-    await this.client.sendResourceToServer({
-      resource: "opened-tab-id",
-      correlationId,
-      tabId: tab.id,
-    });
-  }
-
-  private async closeTabs(
-    correlationId: string,
-    tabIds: number[]
-  ): Promise<void> {
-    await browser.tabs.remove(tabIds);
-    await this.client.sendResourceToServer({
-      resource: "tabs-closed",
-      correlationId,
-    });
-  }
-
-  private async sendTabs(correlationId: string): Promise<void> {
-    const tabs = await browser.tabs.query({});
-    await this.client.sendResourceToServer({
-      resource: "tabs",
-      correlationId,
-      tabs,
-    });
-  }
-
-  private async sendRecentHistory(
-    correlationId: string,
-    searchQuery: string | null = null
-  ): Promise<void> {
-    const historyItems = await browser.history.search({
-      text: searchQuery ?? "", // Search for all URLs (empty string matches everything)
-      maxResults: 200, // Limit to 200 results
-      startTime: 0, // Search from the beginning of time
-    });
-    const filteredHistoryItems = historyItems.filter((item) => {
-      return !!item.url;
-    });
-    await this.client.sendResourceToServer({
-      resource: "history",
-      correlationId,
-      historyItems: filteredHistoryItems,
-    });
-  }
-
-  // Check that the user has granted permission to access the URL's domain.
-  // This will open the options page with a URL parameter to request permission
-  // and throw an error to indicate that the request cannot proceed until permission is granted.
-  private async checkForUrlPermission(url: string | undefined): Promise<void> {
-    if (url) {
-      const origin = new URL(url).origin;
-      const granted = await browser.permissions.contains({
-        origins: [`${origin}/*`],
-      });
-
-      if (!granted) {
-        // Open the options page with a URL parameter to request permission:
-        const optionsUrl = browser.runtime.getURL("options.html");
-        const urlWithParams = `${optionsUrl}?requestUrl=${encodeURIComponent(
-          url
-        )}`;
-
-        await browser.tabs.create({ url: urlWithParams });
-        throw new Error(
-          `The user has not yet granted permission to access the domain "${origin}". A dialog is now being opened to request permission. If the user grants permission, you can try the request again.`
-        );
-      }
-    }
-  }
-
-  private async checkForGlobalPermission(permissions: string[]): Promise<void> {
-    const granted = await browser.permissions.contains({
-      permissions,
-    });
-
-    if (!granted) {
-      // Open the options page with a URL parameter to request permission:
-      const optionsUrl = browser.runtime.getURL("options.html");
-      const urlWithParams = `${optionsUrl}?requestPermissions=${encodeURIComponent(
-        JSON.stringify(permissions)
-      )}`;
-
-      await browser.tabs.create({ url: urlWithParams });
-      throw new Error(
-        `The user has not yet granted permission for the following operations: ${permissions.join(
-          ", "
-        )}. A dialog is now being opened to request permission. If the user grants permission, you can try the request again.`
-      );
-    }
-  }
-
-  private async sendTabsContent(
-    correlationId: string,
-    tabId: number,
-    offset?: number
-  ): Promise<void> {
-    const tab = await browser.tabs.get(tabId);
-    if (tab.url && (await isDomainInDenyList(tab.url))) {
-      throw new Error(`Domain in tab URL is in the deny list`);
-    }
-
-    await this.checkForUrlPermission(tab.url);
-
-    const MAX_CONTENT_LENGTH = 50_000;
-    const results = await browser.tabs.executeScript(tabId, {
-      code: `
-      (function () {
-        function getLinks() {
-          const linkElements = document.querySelectorAll('a[href]');
-          return Array.from(linkElements).map(el => ({
-            url: el.href,
-            text: el.innerText.trim() || el.getAttribute('aria-label') || el.getAttribute('title') || ''
-          })).filter(link => link.text !== '' && link.url.startsWith('https://') && !link.url.includes('#'));
-        }
-
-        function getTextContent() {
-          let isTruncated = false;
-          let text = document.body.innerText.substring(${Number(offset) || 0});
-          if (text.length > ${MAX_CONTENT_LENGTH}) {
-            text = text.substring(0, ${MAX_CONTENT_LENGTH});
-            isTruncated = true;
-          }
-          return {
-            text, isTruncated
-          }
-        }
-
-        const textContent = getTextContent();
-
-        return {
-          links: getLinks(),
-          fullText: textContent.text,
-          isTruncated: textContent.isTruncated,
-          totalLength: document.body.innerText.length
-        };
-      })();
-    `,
-    });
-    const { isTruncated, fullText, links, totalLength } = results[0];
-    await this.client.sendResourceToServer({
-      resource: "tab-content",
-      tabId,
-      correlationId,
-      isTruncated,
-      fullText,
-      links,
-      totalLength,
-    });
-  }
-
-  private async reorderTabs(
-    correlationId: string,
-    tabOrder: number[]
-  ): Promise<void> {
-    // Reorder the tabs sequentially
-    for (let newIndex = 0; newIndex < tabOrder.length; newIndex++) {
-      const tabId = tabOrder[newIndex];
-      await browser.tabs.move(tabId, { index: newIndex });
-    }
-    await this.client.sendResourceToServer({
-      resource: "tabs-reordered",
-      correlationId,
-      tabOrder,
-    });
-  }
-
-  private async findAndHighlightText(
-    correlationId: string,
-    tabId: number,
-    queryPhrase: string
-  ): Promise<void> {
-    const tab = await browser.tabs.get(tabId);
-
-    if (tab.url && (await isDomainInDenyList(tab.url))) {
-      throw new Error(`Domain in tab URL is in the deny list`);
-    }
-
-    await this.checkForGlobalPermission(["find"]);
-
-    const findResults = await browser.find.find(queryPhrase, {
-      tabId,
-      caseSensitive: true,
-    });
-
-    // If there are results, highlight them
-    if (findResults.count > 0) {
-      // But first, activate the tab. In firefox, this would also enable
-      // auto-scrolling to the highlighted result.
-      await browser.tabs.update(tabId, { active: true });
-      browser.find.highlightResults({
-        tabId,
-      });
-    }
-
-    await this.client.sendResourceToServer({
-      resource: "find-highlight-result",
-      correlationId,
-      noOfResults: findResults.count,
-    });
-  }
-
-  private async captureScreenshot(
-    correlationId: string,
-    tabId: number,
-    format: "jpeg" | "png" = "jpeg",
-    quality: number = 70,
-    scale: number = 1
-  ): Promise<void> {
-    const tab = await browser.tabs.get(tabId);
-
-    if (tab.url && (await isDomainInDenyList(tab.url))) {
-      throw new Error(`Domain in tab URL is in the deny list`);
-    }
-
-    if (!hasCaptureConsent(tabId, tab.url)) {
-      await markTabAsAwaitingConsent(tabId);
-      throw new Error(
-        `The user has not authorized screenshots of tab ${tabId} ("${
-          tab.title ?? tab.url
-        }"). The extension's toolbar button is now marked with a "!" badge on that tab. ` +
-          `Ask the user to click the Browser Control MCP button in the Firefox toolbar while that tab is open, then try again. ` +
-          `The authorization covers only that tab, and ends when the tab navigates or closes.`
-      );
-    }
-
-    if (tab.windowId === undefined) {
-      throw new Error(`Tab ${tabId} does not belong to a window`);
-    }
-
-    // captureVisibleTab() captures whichever tab is active in the window, and activeTab is
-    // only granted for the tab the user clicked, so the target tab has to be foregrounded
-    // first. Restore the previous tab afterwards so the capture is not disruptive.
-    const restoreTabId = tab.active
-      ? undefined
-      : await this.activateTabForCapture(tabId, tab.windowId);
-
-    try {
-      let dataUrl: string;
-      try {
-        dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, {
-          format,
-          quality,
-          scale,
-        });
-      } catch (error) {
-        // The browser is the real enforcer of the activeTab grant, so it can still refuse
-        // even when the tracked consent looks valid.
-        throw new Error(
-          `Firefox refused to capture tab ${tabId}: ${
-            error instanceof Error ? error.message : String(error)
-          }. Capturing with per-tab authorization requires Firefox 126 or later. ` +
-            `Otherwise, ask the user to click the extension's toolbar button on that tab again.`
-        );
-      }
-      const { mimeType, imageData } = parseImageDataUrl(dataUrl);
-      await this.client.sendResourceToServer({
-        resource: "screenshot",
-        correlationId,
-        tabId,
-        imageData,
-        mimeType,
-      });
-    } finally {
-      if (restoreTabId !== undefined) {
-        try {
-          await browser.tabs.update(restoreTabId, { active: true });
-        } catch (error) {
-          console.error("Failed to restore the previously active tab:", error);
-        }
-      }
-    }
-  }
-
-  // Foregrounds the tab to be captured, returning the tab that was active before, if any.
-  private async activateTabForCapture(
-    tabId: number,
-    windowId: number
-  ): Promise<number | undefined> {
-    const [previouslyActive] = await browser.tabs.query({
-      active: true,
-      windowId,
-    });
-    await browser.tabs.update(tabId, { active: true });
-    await new Promise((resolve) => setTimeout(resolve, TAB_PAINT_DELAY_MS));
-    return previouslyActive?.id;
-  }
-
-  private async groupTabs(
-    correlationId: string,
-    tabIds: number[],
-    isCollapsed: boolean,
-    groupColor: browser.tabGroups.Color,
-    groupTitle: string
-  ): Promise<void> {
-    const groupId = await browser.tabs.group({
-      tabIds,
-    });
-
-    let tabGroup = await browser.tabGroups.update(groupId, {
-      collapsed: isCollapsed,
-      color: groupColor,
-      title: groupTitle,
-    });
-
-    await this.client.sendResourceToServer({
-      resource: "new-tab-group",
-      correlationId,
-      groupId: tabGroup.id,
-    });
-  }
+  return cachedPolicy.policy;
 }
 
-function parseImageDataUrl(dataUrl: string): {
-  mimeType: string;
-  imageData: string;
-} {
-  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
-  if (!match) {
-    throw new Error("The browser returned a screenshot in an unexpected format");
+export type CommandOutcome =
+  | { ok: true; result: unknown }
+  | { ok: false; error: string; code: ErrorCode };
+
+export class MessageHandler {
+  /** Runs a request and always produces an outcome; nothing thrown escapes. */
+  async handle(request: AnyRequestMessage): Promise<CommandOutcome> {
+    let outcome: CommandOutcome;
+    try {
+      outcome = { ok: true, result: await this.execute(request) };
+    } catch (error) {
+      outcome = {
+        ok: false,
+        error: errorMessage(error),
+        code: error instanceof CommandError ? error.code : "internal",
+      };
+      if (!(error instanceof CommandError)) {
+        console.error(`Error handling ${request.cmd}:`, error);
+      }
+    }
+    this.audit(request, outcome).catch((error) =>
+      console.error("Failed to add audit log entry:", error)
+    );
+    return outcome;
   }
-  return { mimeType: match[1], imageData: match[2] };
+
+  private async execute(request: AnyRequestMessage): Promise<unknown> {
+    const cmd = request.cmd as CommandName;
+    if (!(cmd in HANDLERS)) {
+      throw new CommandError("invalid", `Unknown command '${cmd}'. Is the extension up to date?`);
+    }
+    const config = await getConfig();
+    this.checkEnabled(cmd, config);
+
+    const access = new Access(policyFor(config.policyText));
+    const handler = HANDLERS[cmd] as Handler<CommandName>;
+    return asAgentAction(() => handler(request.params as never, { config, access }));
+  }
+
+  private checkEnabled(cmd: CommandName, config: ExtensionConfig): void {
+    const category = COMMAND_CATEGORY[cmd];
+    if (category === null) {
+      return;
+    }
+    if (config.paused) {
+      throw new CommandError(
+        "paused",
+        "The user has paused agent access to the browser."
+      );
+    }
+    if (!isCategoryEnabled(config, category)) {
+      throw new CommandError(
+        "tool-disabled",
+        `The '${category}' tools are disabled in the extension settings.`
+      );
+    }
+  }
+
+  private async audit(request: AnyRequestMessage, outcome: CommandOutcome) {
+    const params = request.params as { url?: string; tabId?: number };
+    let url = params.url;
+    if (url === undefined && typeof params.tabId === "number") {
+      url = await browser.tabs
+        .get(params.tabId)
+        .then((tab) => tab.url)
+        .catch(() => undefined);
+    }
+    await addAuditLogEntry({
+      command: request.cmd,
+      timestamp: Date.now(),
+      url,
+      result: outcome.ok
+        ? "ok"
+        : ["denied", "paused", "tool-disabled", "needs-approval"].includes(outcome.code)
+        ? "denied"
+        : "error",
+      detail: outcome.ok ? undefined : outcome.error.slice(0, 300),
+    });
+  }
 }
