@@ -1,10 +1,13 @@
 {
   "name": "firefox-extension",
-  "version": "1.5.2",
+  "version": "2.0.0",
   "main": "dist/background.js",
   "scripts": {
-    "build": "esbuild background.ts --bundle --outfile=dist/background.js && esbuild options.ts --bundle --outfile=dist/options.js",
-    "test": "jest"
+    "build": "esbuild background.ts options.ts popup.ts --bundle --target=firefox126 --outdir=dist",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "lint": "npx --yes web-ext@8 lint --self-hosted --config=.web-ext-config.cjs",
+    "package": "npx --yes web-ext@8 build --overwrite-dest --config=.web-ext-config.cjs"
   },
   "license": "MIT",
   "description": "Browser Control MCP Firefox Extension / Add-on",

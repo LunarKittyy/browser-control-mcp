@@ -1,445 +1,192 @@
 <!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="utf-8">
   <title>Browser Control MCP Options</title>
+  <link rel="stylesheet" href="theme.css">
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-      padding: 20px;
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    .container {
-      background-color: #f9f9f9;
-      border-radius: 8px;
-      padding: 20px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    h1 {
-      color: #333;
-      margin-top: 0;
-    }
-
-    h2 {
-      margin-top: 12px;
-      margin-bottom: 8px;
-      color: #333;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    h2::after {
-      content: "";
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      background-image: url("assets/caret.svg");
-      background-size: contain;
-      background-repeat: no-repeat;
-    }
-
-    h2.collapsed::after {
-      transform: rotate(180deg);
-    }
-
-    .section-container {
-      margin-top: 20px;
-      background-color: #fff;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 15px;
-    }
-
-    .section-content {
-      transition: max-height 0.3s ease, opacity 0.3s ease;
-      max-height: 2000px;
-      opacity: 1;
-      overflow: hidden;
-    }
-
-    .section-content.collapsed {
-      max-height: 0;
-      opacity: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-
-    .secret-value {
-      font-family: monospace;
-      word-break: break-all;
-      background-color: #f5f5f5;
-      padding: 10px;
-      border-radius: 4px;
-      border: 1px solid #e0e0e0;
-    }
-
-    .copy-button {
-      margin-top: 10px;
-      background-color: #4285f4;
-      color: white;
-      border: none;
-      padding: 8px 16px;  
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    .copy-button:hover {
-      background-color: #3367d6;
-    }
-
-    .status {
-      margin-top: 10px;
-      color: #4caf50;
-      font-size: 14px;
-      height: 20px;
-    }
-
-    .tool-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid #eee;
-    }
-
-    .tool-row:last-child {
-      border-bottom: none;
-    }
-
-    .tool-label-container {
-      flex: 1;
-      padding-right: 20px;
-    }
-
-    .tool-name {
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-
-    .tool-description {
-      font-size: 14px;
-      color: #666;
-    }
-
-    /* Toggle switch styles */
-    .toggle-switch {
-      position: relative;
-      display: inline-block;
-      width: 50px;
-      height: 24px;
-    }
-
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #ccc;
-      transition: .4s;
-      border-radius: 24px;
-    }
-
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 4px;
-      bottom: 4px;
-      background-color: white;
-      transition: .4s;
-      border-radius: 50%;
-    }
-
-    input:checked+.slider {
-      background-color: #4285f4;
-    }
-
-    input:focus+.slider {
-      box-shadow: 0 0 1px #4285f4;
-    }
-
-    input:checked+.slider:before {
-      transform: translateX(26px);
-    }
-
-    /* Permission modal styles */
-    .permission-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.5);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .permission-modal.hidden {
-      display: none;
-    }
-
-    .permission-modal-content {
-      background-color: white;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      max-width: 500px;
-      width: 90%;
-      text-align: center;
-    }
-
-    .permission-modal h2 {
-      margin-top: 0;
-      margin-bottom: 20px;
-      color: #333;
-      cursor: default;
-    }
-
-    .permission-modal h2::after {
-      display: none;
-    }
-
-    .permission-modal p {
-      margin-bottom: 20px;
-      color: #666;
-      line-height: 1.5;
-    }
-
-    .permission-domain {
-      font-family: monospace;
-      background-color: #f5f5f5;
-      padding: 8px 12px;
-      border-radius: 4px;
-      border: 1px solid #e0e0e0;
-      display: inline-block;
-      margin: 0 4px;
-      font-weight: bold;
-    }
-
-    .permission-buttons {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin-top: 25px;
-    }
-
-    .grant-button {
-      background-color: #4285f4;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: bold;
-    }
-
-    .grant-button:hover {
-      background-color: #3367d6;
-    }
-
-    .cancel-button {
-      background-color: #f1f3f4;
-      color: #333;
-      border: 1px solid #dadce0;
-      padding: 10px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    .cancel-button:hover {
-      background-color: #e8eaed;
-    }
-
-    .main-content.modal-open {
-      filter: blur(2px);
-      pointer-events: none;
-    }
-
-    /* Audit log styles */
-    .audit-log-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 14px;
-    }
-
-    .audit-log-table th,
-    .audit-log-table td {
-      padding: 8px 12px;
-      text-align: left;
-      border-bottom: 1px solid #eee;
-    }
-
-    .audit-log-table th {
-      background-color: #f5f5f5;
-      font-weight: bold;
-      color: #333;
-    }
-
-    .audit-log-table td {
-      color: #666;
-    }
-
-    .audit-log-url {
-      font-family: monospace;
-      font-size: 12px;
-      max-width: 200px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .audit-log-timestamp {
-      white-space: nowrap;
-      font-size: 12px;
-    }
-
-    .audit-log-empty {
-      text-align: center;
-      color: #999;
-      font-style: italic;
-      padding: 20px;
-    }
+    body { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; font-size: 14px; line-height: 1.5; }
+    h1 { margin: 0 0 4px; font-size: 24px; }
+    h2 { font-size: 17px; margin: 0; }
+    h3 { font-size: 14px; margin: 16px 0 6px; }
+    section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+    section > header::after { content: "▾"; color: var(--muted); }
+    section.collapsed > header::after { content: "▸"; }
+    section.collapsed > .body { display: none; }
+    .body { margin-top: 10px; }
+    .muted { color: var(--muted); }
+    code, pre, textarea, .mono { font-family: ui-monospace, "JetBrains Mono", "Fira Code", monospace; font-size: 13px; }
+    code { background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
+    pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+    textarea, input[type=text], select { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+    textarea { min-height: 260px; resize: vertical; tab-size: 4; }
+    button { font: inherit; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 6px 12px; cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    button:disabled { opacity: .5; cursor: default; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+    .grid label { display: flex; flex-direction: column; gap: 4px; }
+    .status { min-height: 1.4em; font-size: 13px; }
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--error); }
+    .errors { color: var(--error); font-size: 13px; margin: 6px 0; }
+    .secret { font-family: ui-monospace, monospace; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .decision-allow { color: var(--ok); font-weight: 600; }
+    .decision-ask { color: var(--accent); font-weight: 600; }
+    .decision-deny { color: var(--muted); }
+    .decision-hidden { color: var(--error); font-weight: 600; }
+    .toggle { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); gap: 16px; }
+    .toggle:last-child { border-bottom: 0; }
+    .pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--text); }
+    .modal { position: fixed; inset: 0; background: rgba(20, 10, 25, .45); display: flex; align-items: center; justify-content: center; z-index: 10; }
+    .modal[hidden] { display: none; }
+    .modal > div { background: var(--bg); border-radius: 14px; padding: 22px; max-width: 460px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+    .modal .target { font-family: ui-monospace, monospace; background: var(--accent-soft); padding: 8px 10px; border-radius: 8px; margin: 10px 0; word-break: break-all; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
-
 <body>
-  <!-- Permission Request Modal -->
-  <div id="permission-modal" class="permission-modal hidden">
-    <div class="permission-modal-content">
-      <h2>Permission Required</h2>
-      <p>The Browser Control MCP extension needs permission to access:</p>
-      <div class="permission-domain" id="permission-domain"></div>
-      <p id="permission-text">This will allow the extension to interact with pages on this domain as requested by the MCP server.</p>
-      <div class="permission-buttons">
-        <button id="grant-btn" class="grant-button">Grant Permission</button>
-        <button id="cancel-btn" class="cancel-button">Cancel</button>
+  <div class="modal" id="permission-modal" hidden>
+    <div>
+      <h2>Permission needed</h2>
+      <p id="permission-text">The agent asked for something Firefox needs your OK for:</p>
+      <div class="target" id="permission-target"></div>
+      <p class="muted">Your access policy still applies on top of this.</p>
+      <div class="row">
+        <button class="primary" id="grant-btn">Grant</button>
+        <button id="grant-all-btn" hidden>Grant for all sites</button>
+        <button id="cancel-btn">Cancel</button>
       </div>
     </div>
   </div>
 
-  <div class="container main-content" id="main-content">
-    <h1>Browser Control MCP Options</h1>
-    <p>Configure settings for the Browser Control MCP extension.</p>
+  <h1>Browser Control MCP</h1>
+  <p class="muted">Let an AI agent cowork in your browser, within rules you set.</p>
 
-    <div class="section-container">
-      <h2>MCP Server Installation</h2>
-      <div class="section-content">
-        <p>To use this extension, you need to install the local MCP server. Choose one of the following options:</p>
-        
-        <div style="margin: 15px 0;">
-          <h3 style="margin: 10px 0; font-size: 16px; color: #333;">Option 1: Download DXT Package (Claude Desktop only)</h3>
-          <p>Download and open the pre-built DXT package:</p>
-          <a href="https://github.com/eyalzh/browser-control-mcp/releases/download/v1.5.2/mcp-server-v1.5.2.dxt" 
-             style="display: inline-block; background-color: #4285f4; color: white; padding: 8px 16px; 
-                    text-decoration: none; border-radius: 4px; margin: 5px 0; font-size: 14px;">
-            Download DXT Package
-          </a>
-        </div>
-        
-        <div style="margin: 15px 0;">
-          <h3 style="margin: 10px 0; font-size: 16px; color: #333;">Option 2: Manual MCP Installation</h3>
-          <p>Follow the detailed setup instructions in the github repository:</p>
-          <a href="https://github.com/eyalzh/browser-control-mcp?tab=readme-ov-file#installation" 
-             target="_blank" rel="noopener noreferrer"
-             style="display: inline-block; background-color: #f1f3f4; color: #333; padding: 8px 16px; 
-                    text-decoration: none; border-radius: 4px; border: 1px solid #dadce0; margin: 5px 0; font-size: 14px;">
-            View Installation Guide
-          </a>
-        </div>
-        
-        <p style="margin-top: 15px; color: #666; font-size: 14px;">
-          After installing the MCP server, you'll need to configure it with the secret key shown below.
-        </p>
-      </div>
+  <section id="pause-section">
+    <header><h2>Agent access</h2><span class="pill" id="pause-pill">…</span></header>
+    <div class="body">
+      <p class="muted">Pausing blocks every command right away. Also available from the toolbar button and with <code>Alt+Shift+P</code>.</p>
+      <button id="pause-toggle">…</button>
     </div>
+  </section>
 
-    <div class="section-container">
-      <h2>Secret Key</h2>
-      <div class="section-content">
-        <p>This secret key is automatically generated when the extension is installed and is used to authenticate
-          connections to the MCP server:</p>
-        <div class="secret-value" id="secret-display">Loading...</div>
-        <button class="copy-button" id="copy-button">Copy to Clipboard</button>
-        <div class="status" id="status"></div>
+  <section id="policy-section">
+    <header><h2>Access policy</h2><span class="pill" id="policy-pill"></span></header>
+    <div class="body">
+      <p>One rule per line. Later rules override earlier ones, except <code>hide</code>, which always wins and makes things invisible to the agent.</p>
+      <pre>&lt;allow | ask | deny | hide&gt; &lt;what&gt; on &lt;where&gt;</pre>
+      <div class="row">
+        <span class="muted">Start from a preset:</span>
+        <button data-preset="strict">Strict</button>
+        <button data-preset="balanced">Balanced</button>
+        <button data-preset="autonomous">Autonomous</button>
       </div>
-    </div>
-
-    <div class="section-container">
-      <h2>WebSocket Ports</h2>
-      <div class="section-content">
-        <p>Configure the WebSocket ports for MCP server connections (comma-separated list). Note: Changing this value will reload the extension.</p>
-        <input type="text" id="ports-input" placeholder="8089, 8090, 8091" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; margin-bottom: 10px;" />
-        <button class="copy-button" id="save-ports">Save Ports</button>
-        <div class="status" id="ports-status"></div>
+      <textarea id="policy-text" spellcheck="false"></textarea>
+      <div class="errors" id="policy-errors"></div>
+      <div class="row">
+        <button class="primary" id="save-policy">Save policy</button>
+        <button id="revert-policy">Revert</button>
+        <span class="status" id="policy-status"></span>
       </div>
-    </div>
 
-    <div class="section-container">
-      <h2>Tool Permissions</h2>
-      <div class="section-content">
-        <p>Enable or disable specific MCP tools that can interact with your browser:</p>
-        <div id="tool-settings-container">
-          <!-- Tool settings will be dynamically inserted here -->
-          <div class="loading">Loading tool settings...</div>
-        </div>
+      <h3>Try it</h3>
+      <p class="muted">See what the agent could do with a tab, using the policy in the editor above (saved or not).</p>
+      <div class="grid">
+        <label>URL <input type="text" id="test-url" placeholder="https://www.ikea.com/se/sv/"></label>
+        <label>Tab group title <input type="text" id="test-group" placeholder="(not in a group)"></label>
+        <label>Container <input type="text" id="test-container" placeholder="(no container)"></label>
+        <label>Bookmark folder <input type="text" id="test-folder" placeholder="other/Agent/Research"></label>
       </div>
-    </div>
-
-    <div class="section-container">
-      <h2 class="collapsed" role="button" aria-expanded="false" tabindex="0" id="domain-filtering-header">Domain Filtering</h2>
-      <div class="section-content collapsed" aria-labelledby="domain-filtering-header">
-        <p>Configure which domains the extension can interact with:</p>
-
-        <div class="domain-list-container" style="margin-top: 20px;">
-          <h3>Domain Deny List</h3>
-          <p>The extension will not open tabs or get content from tabs with these domains (one domain per line):</p>
-          <textarea id="domain-deny-list" rows="6" style="width: 100%; font-family: monospace;"></textarea>
-        </div>
-
-        <button id="save-domain-lists" class="copy-button" style="margin-top: 15px;">Save Domain Lists</button>
-        <div class="status" id="domain-status"></div>
+      <div class="row">
+        <label><input type="checkbox" id="test-private"> private window</label>
+        <label><input type="checkbox" id="test-agent"> opened by the agent</label>
       </div>
+      <table id="test-results"></table>
+
+      <h3>Reference</h3>
+      <table>
+        <tr><th>What</th><th>Meaning</th></tr>
+        <tbody id="capability-reference"></tbody>
+        <tr><td><code>all</code></td><td>everything above; <code>bookmarks</code> means both bookmark ones</td></tr>
+      </table>
+      <table style="margin-top:10px">
+        <tr><th>Where</th><th>Matches</th></tr>
+        <tr><td><code>*</code></td><td>everything</td></tr>
+        <tr><td><code>site:ikea.com</code></td><td>ikea.com and its subdomains; <code>site:*.ikea.com</code> only subdomains</td></tr>
+        <tr><td><code>url:https://github.com/me/*</code></td><td>full URLs, <code>*</code> matches anything</td></tr>
+        <tr><td><code>group:"Research*"</code></td><td>tabs in groups with a matching title</td></tr>
+        <tr><td><code>container:"Banking"</code></td><td>tabs in that Firefox container</td></tr>
+        <tr><td><code>private</code> / <code>agent</code></td><td>private windows / tabs the agent opened</td></tr>
+        <tr><td><code>folder:"Agent/**"</code></td><td>bookmark folders; <code>**</code> any depth, <code>*</code> one level, a leading <code>/</code> anchors at a root (<code>toolbar</code>, <code>menu</code>, <code>other</code>, <code>mobile</code>)</td></tr>
+        <tr><td><code>!group:"Work"</code></td><td><code>!</code> negates; several selectors on one line must all match</td></tr>
+      </table>
+      <p class="muted"><code>ask</code> works for read, selection, screenshot and interact: the agent waits until you approve from the toolbar button on that tab. Anything no rule allows is denied.</p>
     </div>
+  </section>
 
-    <div class="section-container">
-      <h2 class="collapsed" role="button" aria-expanded="false" tabindex="0" id="audit-log-header">Audit Log</h2>
-      <div class="section-content collapsed" aria-labelledby="audit-log-header">
-        <p>View recent tool usage history:</p>
-        
-        <div id="audit-log-container" style="margin-top: 20px;">
-          <div class="loading">Loading audit log...</div>
-        </div>
+  <section id="site-access-section">
+    <header><h2>Firefox permissions</h2></header>
+    <div class="body">
+      <p class="muted">Your policy decides what the agent may do; Firefox additionally needs to let the extension into pages. Without site access, reading a new site asks you each time.</p>
+      <div class="toggle"><div><b>Access to all sites</b><div class="muted">Read and act on any page your policy allows, and take screenshots without clicking the toolbar button.</div></div><button id="all-sites-btn">…</button></div>
+      <div class="toggle"><div><b>Bookmarks</b><div class="muted">Needed for the bookmark tools.</div></div><button id="bookmarks-btn">…</button></div>
+      <div class="toggle"><div><b>Find in page</b><div class="muted">Needed for find &amp; highlight.</div></div><button id="find-btn">…</button></div>
+    </div>
+  </section>
 
-        <div style="margin-top: 15px;">
-          <button id="clear-audit-log" class="copy-button">Clear Log</button>
-          <div class="status" id="audit-log-status"></div>
-        </div>
+  <section id="workspace-section">
+    <header><h2>Agent workspace</h2></header>
+    <div class="body">
+      <p class="muted">Where tabs the agent opens end up, so they don't pull you away from what you're doing.</p>
+      <div class="grid">
+        <label>New agent tabs go
+          <select id="workspace-mode">
+            <option value="group">into a tab group (in the background)</option>
+            <option value="window">into a separate window</option>
+            <option value="none">next to your tabs</option>
+          </select>
+        </label>
+        <label>Group title <input type="text" id="workspace-title"></label>
+        <label>Group colour <select id="workspace-color"></select></label>
+        <label>Bookmark folder for archived research <input type="text" id="workspace-folder" placeholder="other/Agent"></label>
       </div>
+      <div class="row"><button class="primary" id="save-workspace">Save</button><span class="status" id="workspace-status"></span></div>
     </div>
-  </div>
+  </section>
+
+  <section id="tools-section" class="collapsed">
+    <header><h2>Tool categories</h2></header>
+    <div class="body">
+      <p class="muted">Switch whole families of tools off, regardless of the policy.</p>
+      <div id="tool-settings"></div>
+    </div>
+  </section>
+
+  <section id="setup-section" class="collapsed">
+    <header><h2>Connection setup</h2></header>
+    <div class="body">
+      <p>Configure the MCP server with this secret as <code>EXTENSION_SECRET</code>. See the <a href="https://github.com/LunarKittyy/browser-control-mcp#installation" target="_blank" rel="noopener noreferrer">installation guide</a>.</p>
+      <div class="secret" id="secret-display">Loading…</div>
+      <div class="row"><button id="copy-button">Copy secret</button><span class="status" id="copy-status"></span></div>
+      <h3>WebSocket ports</h3>
+      <p class="muted">Comma separated. The extension connects to an MCP server on each (<code>EXTENSION_PORT</code>, default 8089).</p>
+      <input type="text" id="ports-input" class="mono" placeholder="8089">
+      <div class="row"><button id="save-ports">Save ports</button><span class="status" id="ports-status"></span></div>
+    </div>
+  </section>
+
+  <section id="audit-section" class="collapsed">
+    <header><h2>Audit log</h2></header>
+    <div class="body">
+      <div id="audit-log"></div>
+      <div class="row"><button id="clear-audit-log">Clear log</button></div>
+    </div>
+  </section>
 
   <script src="dist/options.js"></script>
 </body>
-
 </html>

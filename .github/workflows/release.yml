@@ -1,4 +1,4 @@
-name: Build and Release MCP Server as DXT
+name: Release
 
 on:
   release:
@@ -7,36 +7,49 @@ on:
 jobs:
   build-and-upload:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 22
-        cache: 'npm'
-    
-    - name: Install root dependencies
-      run: npm install
-    
-    - name: Install MCP server dependencies
-      run: npm install --prefix mcp-server
-    
-    - name: Build MCP server package
-      run: cd mcp-server && npm run build && npm run pack-dxt
-    
-    - name: Rename package file with version
-      run: |
-        cd mcp-server
-        mv mcp-server.dxt mcp-server-${{ github.event.release.tag_name }}.dxt
-    
-    - name: Upload package to release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release upload ${{ github.event.release.tag_name }} \
-          ./mcp-server/mcp-server-${{ github.event.release.tag_name }}.dxt \
-          --clobber
+      - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mcp-server/package-lock.json
+            firefox-extension/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm ci --prefix mcp-server
+          npm ci --prefix firefox-extension
+
+      - name: Check versions agree
+        run: npm run check-versions
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Package
+        run: |
+          npm run package --prefix firefox-extension
+          mv firefox-extension/web-ext-artifacts/*.zip browser-control-${{ github.event.release.tag_name }}.xpi
+          cd mcp-server
+          npm prune --omit=dev
+          npm run pack-dxt
+          mv mcp-server.dxt ../mcp-server-${{ github.event.release.tag_name }}.dxt
+
+      - name: Upload to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} \
+            browser-control-${{ github.event.release.tag_name }}.xpi \
+            mcp-server-${{ github.event.release.tag_name }}.dxt \
+            --clobber

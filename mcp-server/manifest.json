@@ -1,20 +1,20 @@
 {
     "dxt_version": "0.1",
     "name": "browser-control-firefox",
-    "version": "1.5.2",
+    "version": "2.0.0",
     "display_name": "Firefox Control",
-    "description": "Control Mozilla Firefox: tabs, history and web content (privacy aware)",
-    "long_description": "This MCP server provides AI assistants with access to the browser's tab management, browsing history, page search, and webpage text content through a local MCP (Model Context Protocol) connection.\n\nBefore accessing any webpage content, explicit user consent is required for each domain through browser-side permissions.\n\n**Note:** This extension requires a separate Firefox add-on component, which is available at [https://addons.mozilla.org/en-US/firefox/addon/browser-control-mcp/](https://addons.mozilla.org/en-US/firefox/addon/browser-control-mcp/). Start by installing the Firefox add-on, then copy the secret key from the add-on settings page (it will open automatically) and paste it into this extension's configuration.",
+    "description": "Cowork with an AI agent in Mozilla Firefox: tabs, tab groups, bookmarks, history, page content and interaction, within an access policy you control",
+    "long_description": "This MCP server lets an AI assistant work in your Firefox browser alongside you: organize tabs and tab groups, archive research into bookmarks, follow what changed since it last looked, read pages and your selection, and interact with pages you allow.\n\nEverything is governed by an access policy you write in the Firefox add-on's settings (for example: let it shop freely on one store, never even see your bank, keep a tab group private). A pause switch in the toolbar stops the agent instantly.\n\n**Note:** This requires the matching Browser Control MCP Firefox add-on (version 2.0 or later). Install the add-on, then copy the secret key from its settings page into this extension's configuration.",
     "author": {
         "name": "eyalzh",
         "url": "https://github.com/eyalzh"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/eyalzh/browser-control-mcp"
+        "url": "https://github.com/LunarKittyy/browser-control-mcp"
     },
-    "support": "https://github.com/eyalzh/browser-control-mcp/issues",
-    "documentation": "https://github.com/eyalzh/browser-control-mcp",
+    "support": "https://github.com/LunarKittyy/browser-control-mcp/issues",
+    "documentation": "https://github.com/LunarKittyy/browser-control-mcp",
     "license": "MIT",
     "keywords": [
         "browser",
@@ -52,40 +52,132 @@
     },
     "tools": [
         {
-            "name": "open-browser-tab",
-            "description": "Open a new tab in the browser"
+            "name": "get-browser-status",
+            "description": "Connection, pause state and the user's access policy"
         },
         {
-            "name": "close-browser-tabs",
-            "description": "Close tabs in the browser"
+            "name": "get-browser-activity",
+            "description": "What changed in the browser since the last check"
         },
         {
             "name": "get-list-of-open-tabs",
-            "description": "Get the list of open tabs in the browser"
+            "description": "List open tabs by window and tab group"
         },
         {
-            "name": "get-recent-browser-history",
-            "description": "Get the list of recent browser history"
+            "name": "open-browser-tab",
+            "description": "Open a URL in the background agent workspace"
         },
         {
-            "name": "get-tab-web-content",
-            "description": "Get the full text content of the webpage and the list of links in the webpage (requires user consent)"
+            "name": "close-browser-tabs",
+            "description": "Close tabs"
+        },
+        {
+            "name": "navigate-browser-tab",
+            "description": "Load a URL, go back/forward or reload a tab"
+        },
+        {
+            "name": "update-browser-tabs",
+            "description": "Pin, mute, unload or focus tabs"
+        },
+        {
+            "name": "move-browser-tabs",
+            "description": "Move tabs between windows"
         },
         {
             "name": "reorder-browser-tabs",
-            "description": "Change the order of open browser tabs"
+            "description": "Reorder tabs"
+        },
+        {
+            "name": "get-recent-browser-history",
+            "description": "Search browser history"
+        },
+        {
+            "name": "list-tab-groups",
+            "description": "List tab groups"
         },
         {
             "name": "group-browser-tabs",
-            "description": "Group browser tabs into a new tab group"
+            "description": "Create a tab group or add tabs to one"
+        },
+        {
+            "name": "update-tab-group",
+            "description": "Rename, recolour, collapse or expand a tab group"
+        },
+        {
+            "name": "ungroup-tabs",
+            "description": "Take tabs out of their groups"
+        },
+        {
+            "name": "move-tab-group",
+            "description": "Move a tab group"
+        },
+        {
+            "name": "close-tab-group",
+            "description": "Dissolve a tab group, optionally closing its tabs"
+        },
+        {
+            "name": "organize-tabs",
+            "description": "Apply a whole tab group arrangement in one call"
+        },
+        {
+            "name": "get-tab-web-content",
+            "description": "Read a page's text, metadata and links"
+        },
+        {
+            "name": "get-tab-selection",
+            "description": "Read the text the user selected"
         },
         {
             "name": "find-highlight-in-browser-tab",
-            "description": "Find and highlight text in a browser tab"
+            "description": "Find and highlight text in a tab"
         },
         {
             "name": "capture-tab-screenshot",
-            "description": "Capture a screenshot of the visible area of a browser tab (requires per-tab user consent)"
+            "description": "Screenshot a tab's visible area"
+        },
+        {
+            "name": "get-page-elements",
+            "description": "List a page's interactive elements"
+        },
+        {
+            "name": "click-page-element",
+            "description": "Click an element"
+        },
+        {
+            "name": "fill-page-element",
+            "description": "Type into a field or pick an option"
+        },
+        {
+            "name": "scroll-page",
+            "description": "Scroll a page"
+        },
+        {
+            "name": "press-key",
+            "description": "Send a key press"
+        },
+        {
+            "name": "search-bookmarks",
+            "description": "Search bookmarks"
+        },
+        {
+            "name": "list-bookmark-folder",
+            "description": "List a bookmark folder"
+        },
+        {
+            "name": "create-bookmarks",
+            "description": "Create bookmarks"
+        },
+        {
+            "name": "update-bookmark",
+            "description": "Rename or move a bookmark"
+        },
+        {
+            "name": "remove-bookmarks",
+            "description": "Delete bookmarks"
+        },
+        {
+            "name": "bookmark-tab-group",
+            "description": "Archive a tab group into bookmarks"
         }
     ]
 }
