@@ -29,12 +29,10 @@ export const groupColorSchema = z.enum(GROUP_COLORS);
 export const tabIdSchema = z.number().int().describe("Tab ID from get-list-of-open-tabs");
 export const tabIdsSchema = z.array(tabIdSchema).min(1);
 
+// One text block: some clients concatenate separate blocks with no separator
 export function textResult(...blocks: string[]): CallToolResult {
-  return {
-    content: blocks
-      .filter((block) => block.length > 0)
-      .map((text) => ({ type: "text" as const, text })),
-  };
+  const text = blocks.filter((block) => block.length > 0).join("\n\n");
+  return { content: text ? [{ type: "text" as const, text }] : [] };
 }
 
 const ERROR_HINTS: Partial<Record<ExtensionError["code"], string>> = {
