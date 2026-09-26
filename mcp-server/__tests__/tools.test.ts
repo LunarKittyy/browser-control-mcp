@@ -110,4 +110,22 @@ describe("MCP tools", () => {
     expect(output).not.toContain("tab-opened");
     expect(output).toContain("Next cursor: abc.2");
   });
+
+  it("returns status sections as one text block separated by blank lines", async () => {
+    const call = jest.fn().mockResolvedValue({
+      extensionVersion: "2.0.0",
+      paused: false,
+      allSitesAccess: true,
+      optionalPermissions: { find: true, bookmarks: true },
+      policyText: "allow read on *",
+      policySummary: ["Allowed: read on everything."],
+      disabledTools: [],
+      agentWorkspace: "Agent group",
+    });
+    const client = await setup(call);
+    const result: any = await client.callTool({ name: "get-browser-status", arguments: {} });
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0].text).toContain("All tool categories enabled\n\nPolicy in plain words:");
+    expect(result.content[0].text).toContain("everything.\n\nPolicy source");
+  });
 });
