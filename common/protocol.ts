@@ -405,3 +405,18 @@ export interface SignedFrame<T> {
   payload: T;
   signature: string;
 }
+
+// A second MCP server on the same port joins the one that owns it (the hub) as a peer and
+// sends its requests through it. Peer frames are signed with the same secret.
+export interface PeerHelloMessage {
+  type: "peer-hello";
+  protocolVersion: number;
+}
+
+export interface PeerWelcomeMessage {
+  type: "peer-welcome";
+  protocolVersion: number;
+}
+
+export type PeerToHubMessage = PeerHelloMessage | AnyRequestMessage;
+export type HubToPeerMessage = PeerWelcomeMessage | ResponseMessage;

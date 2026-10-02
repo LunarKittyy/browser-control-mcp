@@ -28,6 +28,7 @@ Monorepo with three parts:
 - `Commands` in `common/protocol.ts` maps each command to its params and result.
 - Server sends `{ type: "request", id, cmd, params }`; the extension answers `{ type: "response", id, ok, result | error, code }`. The extension opens with a `hello` carrying its protocol version.
 - Every frame is `{ payload, signature }`, HMAC-SHA256 of the JSON payload with the shared secret, in both directions. The server only accepts a connection after a valid hello.
+- Several MCP servers can share one port: the first to bind it is the hub and talks to the extension; later ones connect to the hub with a signed `peer-hello`, get a `peer-welcome`, and send ordinary `request` frames that the hub relays. When the hub exits, a peer takes over the port (the extension reconnects on its own).
 - Bump `ProtocolVersion` (and both `PROTOCOL_VERSION` constants) on incompatible changes.
 
 ### Adding a command
@@ -37,7 +38,7 @@ Monorepo with three parts:
 4. Register the MCP tool in `mcp-server/tools/*.ts` (with annotations) and list it in `mcp-server/manifest.json` (a test checks they match).
 
 ### Key files
-- `mcp-server/browser-api.ts`: WebSocket server, request/response matching, timeouts, reconnects
+- `mcp-server/browser-api.ts`: WebSocket server, hub/peer port sharing, request/response matching, timeouts, reconnects
 - `mcp-server/tools/`: MCP tool definitions and output formatting
 - `firefox-extension/acl/policy.ts`: policy language parser and evaluator (pure, unit tested)
 - `firefox-extension/access.ts`: applies the policy to real tabs, groups and URLs; Firefox permission checks

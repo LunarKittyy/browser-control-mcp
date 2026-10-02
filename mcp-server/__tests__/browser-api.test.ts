@@ -155,3 +155,89 @@ describe("BrowserAPI", () => {
     second.close();
   });
 });
+
+describe("BrowserAPI sharing one port", () => {
+  let port: number;
+  let apis: BrowserAPI[];
+  let extension: FakeExtension;
+
+  const makeApi = () => {
+    const api = new BrowserAPI({
+      secret: SECRET,
+      port,
+      hosts: ["127.0.0.1"],
+      connectWaitMs: 1000,
+      defaultTimeoutMs: 300,
+    });
+    apis.push(api);
+    return api;
+  };
+
+  beforeEach(async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    port = await freePort();
+    apis = [];
+    extension = new FakeExtension();
+  });
+
+  afterEach(async () => {
+    extension.close();
+    apis.forEach((api) => api.close());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    jest.restoreAllMocks();
+  });
+
+  it("lets a second server join the first as a peer and relay calls", async () => {
+    const hub = makeApi();
+    await hub.init();
+    const peer = makeApi();
+    await peer.init();
+    expect(hub.getRole()).toBe("hub");
+    expect(peer.getRole()).toBe("peer");
+
+    await extension.connect(port);
+    extension.onRequest = (request) => extension.reply(request.id, { from: request.cmd });
+
+    await expect(peer.call("get-status", {})).resolves.toEqual({ from: "get-status" });
+    await expect(hub.call("get-tab-list", {})).resolves.toEqual({ from: "get-tab-list" });
+  });
+
+  it("passes extension errors through to the peer with their code", async () => {
+    const hub = makeApi();
+    await hub.init();
+    const peer = makeApi();
+    await peer.init();
+    await extension.connect(port);
+    extension.onRequest = (request) =>
+      extension.send({ type: "response", id: request.id, ok: false, error: "nope", code: "denied" });
+
+    const error = await peer.call("close-tabs", { tabIds: [1] }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(ExtensionError);
+    expect(error).toMatchObject({ message: "nope", code: "denied" });
+  });
+
+  it("refuses peers with the wrong secret", async () => {
+    const hub = makeApi();
+    await hub.init();
+    const intruder = new BrowserAPI({ secret: "wrong", port, hosts: ["127.0.0.1"], connectWaitMs: 100 });
+    apis.push(intruder);
+    await intruder.init();
+    expect(intruder.getRole()).toBeNull();
+  });
+
+  it("promotes a peer to hub when the hub goes away", async () => {
+    const hub = makeApi();
+    await hub.init();
+    const peer = makeApi();
+    await peer.init();
+
+    hub.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(peer.getRole()).toBe("hub");
+
+    await extension.connect(port);
+    extension.onRequest = (request) => extension.reply(request.id, { ok: true });
+    await expect(peer.call("get-status", {})).resolves.toEqual({ ok: true });
+  });
+});
